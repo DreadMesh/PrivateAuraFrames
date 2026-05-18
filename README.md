@@ -1,6 +1,6 @@
 # PrivateAuraFrames
 
-Displays the game's **private aura icons** — Works for Elvui and blizzard default
+Displays the game's **private aura icons** — Works for # Elvui and # blizzard default ONLY
 
 Built as a standalone, lightweight solution — no WeakAuras dependency, no large bundle, just one Lua file.
 
