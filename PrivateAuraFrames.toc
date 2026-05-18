@@ -1,0 +1,8 @@
+## Interface: 120005
+## Title: |cff00ccffPrivateAuraFrames|r
+## Version: 4.5.0
+## Notes: Private aura anchors on unit frames. Separate layouts for party vs raid.
+## Author: DreadMesh
+## SavedVariables: PrivateAuraFramesDB
+
+PrivateAuraFrames.lua
