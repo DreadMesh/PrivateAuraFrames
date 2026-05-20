@@ -40,8 +40,8 @@ local DEFAULTS = {
     },
     raid = {
         enabled              = true,
-        Width                = 25,
-        Height               = 25,
+        Width                = 20,
+        Height               = 20,
         Spacing              = 2,
         xOffset              = 0,
         yOffset              = 0,
@@ -51,7 +51,7 @@ local DEFAULTS = {
         PerRow               = 5,
         RowGrowDirection     = "UP",
         HideBorder           = false,
-        BorderScale          = 2,
+        BorderScale          = 1,
         ShowCountdownFrame   = true,
         ShowCountdownNumbers = false,
         ShowDurationText     = false,
@@ -580,7 +580,18 @@ ev:SetScript("OnEvent", function(_, event, arg1)
 
     elseif event == "PLAYER_REGEN_ENABLED" then
         inCombat = false
+        -- First rebuild fires immediately (via the debounce) to handle
+        -- the common case. A second rebuild 2.5s later catches the
+        -- harder case where ElvUI's secure group header hasn't finished
+        -- reassigning units yet — happens when several roster changes
+        -- happen during combat and ElvUI processes them all at once
+        -- after PLAYER_REGEN_ENABLED. Without this second pass, anchors
+        -- can stay bound to units that no longer match the (now-settled)
+        -- frame layout, leaving icons stuck on the wrong frame.
         RebuildAll()
+        C_Timer.After(2.5, function()
+            if not inCombat then RebuildAll() end
+        end)
 
     elseif event == "ENCOUNTER_START" or event == "ENCOUNTER_END" then
         C_Timer.After(0.5, RebuildAll)
