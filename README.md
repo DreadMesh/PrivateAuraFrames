@@ -33,6 +33,7 @@ Built as a standalone, lightweight solution — no WeakAuras dependency, no larg
 | `/paf reload` | Manually rebuild anchors (rarely needed) |
 | `/paf debug` | Show live anchor counts |
 | `/paf verbose` | Toggle error printing for troubleshooting |
+| `/paf dump` | opens a popup window listing every live private aura anchor with its unit binding, slot, and age. Useful for diagnosing stuck-icon or wrong-target bugs. Text is auto-selected for easy copying. |
 | `/paf reset` | Wipe saved settings and reload UI |
 
 ## Why this exists
