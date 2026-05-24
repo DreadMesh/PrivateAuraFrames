@@ -75,6 +75,7 @@ local GROW_DIRS = { "RIGHT","LEFT","UP","DOWN" }
 local db
 local frames    = { party = {}, raid = {} }
 local anchorIDs = {}
+local anchorMeta = {}  -- diagnostics: [id] = {unit, layout, slot, auraIndex, ts}
 local inCombat  = false
 local settingsCat
 local BuildSettings
@@ -292,6 +293,7 @@ local function RemoveAllAnchors()
         end
     end
     wipe(anchorIDs)
+    wipe(anchorMeta)
 end
 
 -- ──────────────────────────────────────────────────────────────
@@ -426,6 +428,13 @@ local function BuildUnit(layout, slotIndex, unit, unitFrame)
         local ok, id = pcall(C_UnitAuras.AddPrivateAuraAnchor, args)
         if ok and id then
             anchorIDs[#anchorIDs + 1] = id
+            anchorMeta[id] = {
+                unit       = unit,
+                layout     = layout,
+                slot       = slotIndex,
+                auraIndex  = auraIndex,
+                ts         = GetTime(),
+            }
         else
             DebugErr(layout.." slot="..slotIndex.." aura="..auraIndex..": "..tostring(id))
         end
@@ -850,6 +859,97 @@ SlashCmdList["PAF"] = function(msg)
         end
         print("  party containers visible: "..pc..", raid containers visible: "..rc)
 
+    elseif msg == "dump" then
+        -- Diagnostic dump: every live anchor with unit binding info.
+        -- Output goes into a copyable popup window rather than chat,
+        -- since 40-raid dumps are too long to screenshot or copy from
+        -- the chat log easily.
+        local lines = {}
+        local now = GetTime()
+        lines[#lines + 1] = "PrivateAuraFrames dump — "..date("%H:%M:%S")
+        lines[#lines + 1] = "Live anchors: "..#anchorIDs
+        lines[#lines + 1] = string.rep("-", 60)
+        for i = 1, #anchorIDs do
+            local id = anchorIDs[i]
+            local m = anchorMeta[id]
+            if m then
+                local age = string.format("%.1fs", now - m.ts)
+                local exists = UnitExists(m.unit) and "exists" or "MISSING"
+                local name = UnitExists(m.unit) and UnitName(m.unit) or "?"
+                lines[#lines + 1] = string.format(
+                    "id=%d %s slot=%d aura=%d unit=%s [%s, %s] age=%s",
+                    id, m.layout, m.slot, m.auraIndex, m.unit, exists, name, age
+                )
+            else
+                lines[#lines + 1] = "id="..tostring(id).." (no metadata — leak suspect)"
+            end
+        end
+        lines[#lines + 1] = string.rep("-", 60)
+        local visParty, visRaid = 0, 0
+        for _, slot in pairs(frames.party) do
+            if slot and slot.container and slot.container:IsShown() then visParty = visParty + 1 end
+        end
+        for _, slot in pairs(frames.raid) do
+            if slot and slot.container and slot.container:IsShown() then visRaid = visRaid + 1 end
+        end
+        lines[#lines + 1] = "Visible containers: "..visParty.." party + "..visRaid.." raid"
+        lines[#lines + 1] = ""
+        lines[#lines + 1] = "Group state: "..(IsInRaid() and "in raid" or (IsInGroup() and "in party" or "solo"))
+                          .." / players: "..GetNumGroupMembers()
+        lines[#lines + 1] = "In combat: "..tostring(inCombat)
+
+        local text = table.concat(lines, "\n")
+
+        -- Lazy-create the popup window.
+        local dumpFrame = _G.PrivateAuraFramesDumpFrame
+        if not dumpFrame then
+            dumpFrame = CreateFrame("Frame", "PrivateAuraFramesDumpFrame", UIParent, "BackdropTemplate")
+            dumpFrame:SetSize(560, 400)
+            dumpFrame:SetPoint("CENTER")
+            dumpFrame:SetFrameStrata("HIGH")
+            dumpFrame:SetMovable(true)
+            dumpFrame:EnableMouse(true)
+            dumpFrame:RegisterForDrag("LeftButton")
+            dumpFrame:SetScript("OnDragStart", dumpFrame.StartMoving)
+            dumpFrame:SetScript("OnDragStop", dumpFrame.StopMovingOrSizing)
+            if dumpFrame.SetBackdrop then
+                dumpFrame:SetBackdrop({
+                    bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
+                    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+                    tile = true, tileSize = 16, edgeSize = 16,
+                    insets = { left = 4, right = 4, top = 4, bottom = 4 },
+                })
+                dumpFrame:SetBackdropColor(0, 0, 0, 0.95)
+            end
+
+            local title = dumpFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            title:SetPoint("TOP", 0, -8)
+            title:SetText("|cff00ccffPrivateAuraFrames|r dump  —  Ctrl+A then Ctrl+C to copy")
+
+            local closeBtn = CreateFrame("Button", nil, dumpFrame, "UIPanelCloseButton")
+            closeBtn:SetPoint("TOPRIGHT", -4, -4)
+
+            local scroll = CreateFrame("ScrollFrame", nil, dumpFrame, "UIPanelScrollFrameTemplate")
+            scroll:SetPoint("TOPLEFT", 12, -30)
+            scroll:SetPoint("BOTTOMRIGHT", -30, 12)
+
+            local edit = CreateFrame("EditBox", nil, scroll)
+            edit:SetMultiLine(true)
+            edit:SetAutoFocus(false)
+            edit:SetFontObject("ChatFontNormal")
+            edit:SetWidth(500)
+            edit:SetScript("OnEscapePressed", function() dumpFrame:Hide() end)
+            scroll:SetScrollChild(edit)
+
+            dumpFrame.edit = edit
+        end
+
+        dumpFrame.edit:SetText(text)
+        dumpFrame.edit:HighlightText()
+        dumpFrame.edit:SetFocus()
+        dumpFrame:Show()
+        print("|cff00ccffPAF|r: dump opened — "..#anchorIDs.." anchors")
+
     elseif msg == "verbose" then
         db.debug = not db.debug
         print("|cff00ccffPAF|r: verbose errors "..(db.debug and "ON" or "OFF"))
@@ -866,6 +966,7 @@ SlashCmdList["PAF"] = function(msg)
         print("  /paf preview raid  — toggle raid preview")
         print("  /paf reload        — rebuild anchors")
         print("  /paf debug         — show anchor counts")
+        print("  /paf dump          — dump anchor table with unit info")
         print("  /paf verbose       — toggle error printing")
         print("  /paf reset         — wipe saved settings (reloads UI)")
     end
