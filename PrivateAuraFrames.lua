@@ -76,7 +76,6 @@ local db
 local frames    = { party = {}, raid = {} }
 local anchorIDs = {}
 local anchorMeta = {}  -- diagnostics: [id] = {unit, layout, slot, auraIndex, ts}
-local inCombat  = false
 local settingsCat
 local BuildSettings
 
@@ -559,10 +558,6 @@ ev:RegisterEvent("ADDON_LOADED")
 ev:RegisterEvent("PLAYER_LOGIN")
 ev:RegisterEvent("PLAYER_ENTERING_WORLD")
 ev:RegisterEvent("GROUP_ROSTER_UPDATE")
-ev:RegisterEvent("PLAYER_REGEN_DISABLED")
-ev:RegisterEvent("PLAYER_REGEN_ENABLED")
-ev:RegisterEvent("ENCOUNTER_START")
-ev:RegisterEvent("ENCOUNTER_END")
 ev:RegisterUnitEvent("UNIT_PET", "player")
 ev:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 
@@ -582,28 +577,7 @@ ev:SetScript("OnEvent", function(_, event, arg1)
         or event == "GROUP_ROSTER_UPDATE"
         or event == "UNIT_PET"
         or event == "ZONE_CHANGED_NEW_AREA" then
-        if not inCombat then RebuildAll() end
-
-    elseif event == "PLAYER_REGEN_DISABLED" then
-        inCombat = true
-
-    elseif event == "PLAYER_REGEN_ENABLED" then
-        inCombat = false
-        -- First rebuild fires immediately (via the debounce) to handle
-        -- the common case. A second rebuild 2.5s later catches the
-        -- harder case where ElvUI's secure group header hasn't finished
-        -- reassigning units yet — happens when several roster changes
-        -- happen during combat and ElvUI processes them all at once
-        -- after PLAYER_REGEN_ENABLED. Without this second pass, anchors
-        -- can stay bound to units that no longer match the (now-settled)
-        -- frame layout, leaving icons stuck on the wrong frame.
         RebuildAll()
-        C_Timer.After(2.5, function()
-            if not inCombat then RebuildAll() end
-        end)
-
-    elseif event == "ENCOUNTER_START" or event == "ENCOUNTER_END" then
-        C_Timer.After(0.5, RebuildAll)
     end
 end)
 
@@ -896,7 +870,7 @@ SlashCmdList["PAF"] = function(msg)
         lines[#lines + 1] = ""
         lines[#lines + 1] = "Group state: "..(IsInRaid() and "in raid" or (IsInGroup() and "in party" or "solo"))
                           .." / players: "..GetNumGroupMembers()
-        lines[#lines + 1] = "In combat: "..tostring(inCombat)
+        lines[#lines + 1] = "In combat: "..tostring(InCombatLockdown())
 
         local text = table.concat(lines, "\n")
 
